@@ -14,3 +14,7 @@
 !run_imageanalysis.sh
 !classification.py
 !strain_names_and_paths.yaml
+!requirements.txt
+!run_pipeline.sh
+!aws/
+!aws/**

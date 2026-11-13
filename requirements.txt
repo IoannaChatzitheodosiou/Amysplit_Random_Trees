@@ -1,0 +1,14 @@
+# Python 3.11. Versions match the local .venv311.
+numpy==1.26.4
+pandas==3.0.0
+opencv-python-headless==4.13.0.92
+tifffile==2026.1.28
+read-roi==1.6.0
+pystackreg==0.2.8
+PyYAML==6.0.3
+scikit-learn==1.8.0
+scipy==1.17.0
+matplotlib==3.10.8
+plotly==6.5.2
+seaborn==0.13.2
+scikit-posthocs==0.12.0

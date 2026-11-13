@@ -1,6 +1,6 @@
 # @title Load the imports
 
-import keras
+# import keras  # only used by the commented-out experiments below
 # import ml_edu.experiment
 # import ml_edu.results
 import numpy as np
