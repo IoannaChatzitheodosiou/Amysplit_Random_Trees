@@ -20,7 +20,7 @@ from sklearn.model_selection import (
     StratifiedKFold,
     RandomizedSearchCV,
 )
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, HistGradientBoostingClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score, make_scorer
 
 
@@ -44,6 +44,10 @@ def data_loading(yaml_path='strain_names_and_paths.yaml', include_validation=Fal
 
     def load_group(path_map, split_role):
         for strain, strain_paths in path_map.items():
+            unique_paths = list(dict.fromkeys(strain_paths))
+            if len(unique_paths) != len(strain_paths):
+                print(f"Warning: duplicate paths for strain '{strain}' in {split_role} set were ignored")
+            strain_paths = unique_paths
             progress(f"Reading {split_role} files for strain '{strain}' ({len(strain_paths)} paths)")
             for path in strain_paths:
                 path_obj = Path(path)
@@ -113,6 +117,24 @@ def parse_args():
     parser.add_argument('--search-iters', type=int, default=30, help='Number of RandomizedSearch iterations')
     parser.add_argument('--no-group-split', action='store_true', help='Disable grouped split by source_path in random split mode')
     parser.add_argument('--no-extra-trees', action='store_true', help='Skip ExtraTrees baseline comparison')
+    parser.add_argument(
+        '--model',
+        choices=['rf', 'hgb'],
+        default='rf',
+        help='rf (default): RandomForest, hgb: HistGradientBoosting (much faster on large datasets)'
+    )
+    parser.add_argument(
+        '--no-per-sample-norm',
+        action='store_true',
+        help='Disable per-sample robust scaling of features (scaling removes sample/day batch shifts)'
+    )
+    parser.add_argument('--plots', action='store_true', help='Show interactive 3D scatter plots')
+    parser.add_argument('--export-csv', action='store_true', help='Write normalized_dataset.csv (large file)')
+    parser.add_argument(
+        '--include-shape-spatial',
+        action='store_true',
+        help='Also use particle shape and spacing features (excluded by default: they track sample prep, not strain)'
+    )
     return parser.parse_args()
 
 args = parse_args()
@@ -128,6 +150,45 @@ def add_engineered_features(df):
         df['range_low'] = df['max_value_low'] - df['min_value_low']
     if {'max_value_high', 'min_value_high'}.issubset(df.columns):
         df['range_high'] = df['max_value_high'] - df['min_value_high']
+    # Intensity-invariant features: less sensitive to illumination/day differences.
+    eps = 1e-9
+    if {'mean_value_high', 'mean_value_low'}.issubset(df.columns):
+        df['ratio_mean'] = df['mean_value_high'] / (df['mean_value_low'] + eps)
+    if {'max_value_high', 'max_value_low'}.issubset(df.columns):
+        df['ratio_max'] = df['max_value_high'] / (df['max_value_low'] + eps)
+    for channel in ('high', 'low', 'divided'):
+        std_col, mean_col = f'stdev_{channel}', f'mean_value_{channel}'
+        if {std_col, mean_col}.issubset(df.columns):
+            df[f'cv_{channel}'] = df[std_col] / (df[mean_col] + eps)
+    if 'area_high' in df.columns:
+        df['log_area'] = np.log1p(df['area_high'])
+    return df
+
+
+# Columns that are numeric but are identifiers, not particle measurements.
+NON_FEATURE_COLS = {'particle_id', 'centroid_x', 'centroid_y', 'touches_border'}
+
+# Extracted by Imageanalysis_ml.py but excluded by default. In leave-one-sample-out
+# tests they lowered accuracy (shape 0.42 -> 0.38, spacing -> 0.33): they mostly
+# encode sample preparation/density rather than strain.
+SHAPE_SPATIAL_COLS = {
+    'perimeter', 'circularity', 'solidity', 'extent', 'equiv_diameter',
+    'major_axis', 'minor_axis', 'aspect_ratio', 'eccentricity',
+    'nn_distance', 'n_neighbors_50px',
+}
+
+
+def per_sample_robust_scale(df, feature_cols, group_col='source_path'):
+    """Scale each feature by its own sample's median and IQR.
+
+    Uses no labels, so it is also valid on held-out samples. It removes
+    sample/day-level shifts in brightness and particle size, leaving the
+    within-sample distribution shape that the classifier learns from.
+    """
+    grouped = df.groupby(group_col)[feature_cols]
+    median = grouped.transform('median')
+    iqr = grouped.transform(lambda c: c.quantile(0.75) - c.quantile(0.25))
+    df[feature_cols] = (df[feature_cols] - median) / (iqr + 1e-9)
     return df
 
 
@@ -183,16 +244,22 @@ def apply_iqr_filter(df, thresholds):
     return df[mask].copy()
 
 
-def build_feature_matrices(train_df, test_df):
+def build_feature_matrices(train_df, test_df, per_sample_norm=True, include_shape_spatial=False):
     train_df = add_engineered_features(train_df.copy())
     test_df = add_engineered_features(test_df.copy())
 
     numeric_cols_train = set(train_df.select_dtypes(include=[np.number]).columns)
     numeric_cols_test = set(test_df.select_dtypes(include=[np.number]).columns)
-    feature_cols = sorted(numeric_cols_train.intersection(numeric_cols_test))
+    excluded = NON_FEATURE_COLS if include_shape_spatial else NON_FEATURE_COLS | SHAPE_SPATIAL_COLS
+    feature_cols = sorted(numeric_cols_train.intersection(numeric_cols_test) - excluded)
 
     if not feature_cols:
         raise RuntimeError("No shared numeric feature columns were found between train and test sets")
+
+    if per_sample_norm and 'source_path' in train_df.columns:
+        train_df = per_sample_robust_scale(train_df, feature_cols)
+        test_df = per_sample_robust_scale(test_df, feature_cols)
+        print("Per-sample robust scaling applied (median/IQR per source_path).")
 
     print(f"Outlier removal disabled. Training rows kept: {len(train_df)}")
 
@@ -209,17 +276,28 @@ def build_feature_matrices(train_df, test_df):
     return X_train, X_test, y_train, y_test, train_df, test_df, feature_cols
 
 
-def tune_random_forest(X_train, y_train, groups, random_state, cv_folds, search_iters):
-    rf = RandomForestClassifier(random_state=random_state, n_jobs=-1)
-    param_distributions = {
-        'n_estimators': [300, 500, 800, 1200],
-        'max_depth': [None, 8, 12, 20, 30, 40],
-        'min_samples_split': [2, 4, 8, 12, 20],
-        'min_samples_leaf': [1, 2, 4, 8, 12],
-        'max_features': ['sqrt', 'log2', 0.3, 0.5, 0.8],
-        'class_weight': [None, 'balanced', 'balanced_subsample'],
-        'bootstrap': [True],
-    }
+def tune_model(X_train, y_train, groups, random_state, cv_folds, search_iters, model_kind='rf'):
+    if model_kind == 'hgb':
+        estimator = HistGradientBoostingClassifier(random_state=random_state)
+        param_distributions = {
+            'max_iter': [200, 400, 800],
+            'learning_rate': [0.03, 0.05, 0.1, 0.2],
+            'max_leaf_nodes': [15, 31, 63, 127],
+            'min_samples_leaf': [20, 50, 100, 200],
+            'l2_regularization': [0.0, 0.1, 1.0],
+            'class_weight': [None, 'balanced'],
+        }
+    else:
+        estimator = RandomForestClassifier(random_state=random_state, n_jobs=-1)
+        param_distributions = {
+            'n_estimators': [300, 500, 800, 1200],
+            'max_depth': [None, 8, 12, 20, 30, 40],
+            'min_samples_split': [2, 4, 8, 12, 20],
+            'min_samples_leaf': [1, 2, 4, 8, 12],
+            'max_features': ['sqrt', 'log2', 0.3, 0.5, 0.8],
+            'class_weight': [None, 'balanced', 'balanced_subsample'],
+            'bootstrap': [True],
+        }
 
     scorer = make_scorer(f1_score, average='macro')
     if groups is not None and len(np.unique(groups)) >= 2:
@@ -233,7 +311,7 @@ def tune_random_forest(X_train, y_train, groups, random_state, cv_folds, search_
         print(f"Using StratifiedKFold CV with {max(2, cv_folds)} folds.")
 
     search = RandomizedSearchCV(
-        estimator=rf,
+        estimator=estimator,
         param_distributions=param_distributions,
         n_iter=search_iters,
         scoring={'accuracy': 'accuracy', 'f1_macro': scorer},
@@ -281,86 +359,94 @@ train_df, test_df = split_dataset(
 X_train, X_test, y_train, y_test, train_df, test_df, feature_cols = build_feature_matrices(
     train_df,
     test_df,
+    per_sample_norm=not args.no_per_sample_norm,
+    include_shape_spatial=args.include_shape_spatial,
 )
+print(f"Using {len(feature_cols)} features: {feature_cols}")
 
-train_export = train_df.copy()
-train_export['split_role'] = 'train'
-test_export = test_df.copy()
-test_export['split_role'] = 'test'
-normalized_dataset = pd.concat([train_export, test_export], ignore_index=True)
-normalized_dataset.to_csv("normalized_dataset.csv", index=False)
+if args.export_csv or args.plots:
+    train_export = train_df.copy()
+    train_export['split_role'] = 'train'
+    test_export = test_df.copy()
+    test_export['split_role'] = 'test'
+    normalized_dataset = pd.concat([train_export, test_export], ignore_index=True)
 
-px.scatter_3d(
-    normalized_dataset,
-    x='max_value_low',
-    y='max_value_high',
-    z='pearson_corr',
-    color='strain',
-    ).show()
-px.scatter_3d(
-    normalized_dataset,
-    x='center_edge_ratio_low',
-    y='center_edge_ratio_high',
-    z='stdev_divided',
-    color='strain',
-    ).show()
-px.scatter_3d(
-    normalized_dataset,
-    x='min_value_low',
-    y='min_value_high',
-    z='area_divided',
-    color='strain',
-    ).show()
+if args.export_csv:
+    normalized_dataset.to_csv("normalized_dataset.csv", index=False)
+
+if args.plots:
+    for x, y, z in [
+        ('max_value_low', 'max_value_high', 'pearson_corr'),
+        ('center_edge_ratio_low', 'center_edge_ratio_high', 'stdev_divided'),
+        ('min_value_low', 'min_value_high', 'area_divided'),
+    ]:
+        px.scatter_3d(normalized_dataset, x=x, y=y, z=z, color='strain').show()
 
 
-# Random Forest classification (strain prediction)
-print("\nTuning Random Forest classifier for strain prediction...")
+def report_aggregated(model, X, df, y_true, level_col, label):
+    """Average particle probabilities within each image/sample and report accuracy."""
+    proba = pd.DataFrame(model.predict_proba(X), columns=model.classes_, index=df.index)
+    keys = df[level_col] if isinstance(level_col, str) else df[level_col].astype(str).agg('|'.join, axis=1)
+    grouped = proba.groupby(keys)
+    pred = grouped.mean().idxmax(axis=1)
+    true = y_true.groupby(keys).first()
+    print(
+        f"{label}-level ({len(true)} {label.lower()}s): "
+        f"accuracy={accuracy_score(true, pred):.4f}, macro-F1={f1_score(true, pred, average='macro'):.4f}"
+    )
+    return pd.DataFrame({'true': true, 'predicted': pred})
+
+
+def evaluate(model, name):
+    y_pred = model.predict(X_test)
+    print(f"{name} particle-level test accuracy: {accuracy_score(y_test, y_pred):.4f}")
+    print(f"{name} particle-level test macro-F1: {f1_score(y_test, y_pred, average='macro'):.4f}")
+    print(f"{name} classification report:\n", classification_report(y_test, y_pred))
+    print(f"{name} confusion matrix:\n", confusion_matrix(y_test, y_pred))
+    if 'image' in test_df.columns and 'source_path' in test_df.columns:
+        report_aggregated(model, X_test, test_df, y_test, ['source_path', 'image'], 'Image')
+    if 'source_path' in test_df.columns:
+        sample_calls = report_aggregated(model, X_test, test_df, y_test, 'source_path', 'Sample')
+        print(sample_calls.to_string())
+
+
+model_name = 'HistGradientBoosting' if args.model == 'hgb' else 'Random Forest'
+print(f"\nTuning {model_name} classifier for strain prediction...")
 train_groups = train_df['source_path'].values if 'source_path' in train_df.columns else None
-rf_search = tune_random_forest(
+search = tune_model(
     X_train,
     y_train,
     groups=train_groups,
     random_state=args.random_state,
     cv_folds=args.cv_folds,
     search_iters=args.search_iters,
+    model_kind=args.model,
 )
-rf_model = rf_search.best_estimator_
+best_model = search.best_estimator_
 
-print(f"Best RF CV macro-F1: {rf_search.best_score_:.4f}")
-print(f"Best RF params: {rf_search.best_params_}")
+print(f"Best {model_name} CV macro-F1: {search.best_score_:.4f}")
+print(f"Best {model_name} params: {search.best_params_}")
+evaluate(best_model, model_name)
 
-y_pred = rf_model.predict(X_test)
-rf_acc = accuracy_score(y_test, y_pred)
-rf_f1 = f1_score(y_test, y_pred, average='macro')
-print(f"Random Forest test accuracy: {rf_acc:.4f}")
-print(f"Random Forest test macro-F1: {rf_f1:.4f}")
-print("Random Forest classification report:\n", classification_report(y_test, y_pred))
-print("Random Forest confusion matrix:\n", confusion_matrix(y_test, y_pred))
-
-if not args.no_extra_trees:
+if args.model == 'rf' and not args.no_extra_trees:
     print("\nTraining ExtraTrees baseline for comparison...")
     et_model = ExtraTreesClassifier(
-        n_estimators=rf_model.n_estimators,
-        max_depth=rf_model.max_depth,
-        min_samples_split=rf_model.min_samples_split,
-        min_samples_leaf=rf_model.min_samples_leaf,
-        max_features=rf_model.max_features,
-        class_weight=rf_model.class_weight,
+        n_estimators=best_model.n_estimators,
+        max_depth=best_model.max_depth,
+        min_samples_split=best_model.min_samples_split,
+        min_samples_leaf=best_model.min_samples_leaf,
+        max_features=best_model.max_features,
+        class_weight=best_model.class_weight,
         random_state=args.random_state,
         n_jobs=-1,
     )
     et_model.fit(X_train, y_train)
-    et_pred = et_model.predict(X_test)
-    et_acc = accuracy_score(y_test, et_pred)
-    et_f1 = f1_score(y_test, et_pred, average='macro')
-    print(f"ExtraTrees test accuracy: {et_acc:.4f}")
-    print(f"ExtraTrees test macro-F1: {et_f1:.4f}")
-    print("ExtraTrees classification report:\n", classification_report(y_test, et_pred))
-    print("ExtraTrees confusion matrix:\n", confusion_matrix(y_test, et_pred))
+    evaluate(et_model, 'ExtraTrees')
 
-feature_importance = pd.Series(rf_model.feature_importances_, index=feature_cols).sort_values(ascending=False)
-print("\nTop 15 Random Forest feature importances:")
-print(feature_importance.head(15))
+if hasattr(best_model, 'feature_importances_'):
+    feature_importance = pd.Series(best_model.feature_importances_, index=feature_cols).sort_values(ascending=False)
+    print(f"\nTop 15 {model_name} feature importances:")
+    print(feature_importance.head(15))
 
 
 # # Filter out RML strain
