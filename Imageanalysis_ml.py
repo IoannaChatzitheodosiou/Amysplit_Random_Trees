@@ -13,8 +13,28 @@ import csv
 import yaml
 from pathlib import Path
 
+def parse_bool(value, default=False):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    value_str = str(value).strip().lower()
+    if value_str in {"1", "true", "yes", "y", "on"}:
+        return True
+    if value_str in {"0", "false", "no", "n", "off"}:
+        return False
+    return default
+
 
 def image_listing(datapath):  #function that reads your images from the folder
+    derived_suffixes = (
+        "_low.tif",
+        "_high.tif",
+        "_stack.tif",
+        "_divided.tif",
+        "_divided_non_aligned.tif",
+        "_contoured.tif",
+    )
     # Match .tif/.tiff files regardless of upper/lowercase extension.
     imagelist = [
         str(p)
@@ -24,6 +44,7 @@ def image_listing(datapath):  #function that reads your images from the folder
             and p.suffix.lower() in {".tif", ".tiff"}
             and not p.name.startswith("._")
             and not p.name.startswith(".")
+            and not p.name.lower().endswith(derived_suffixes)
         )
     ]
     open_images = {} #dictionary for open images
@@ -45,11 +66,35 @@ def roi_selection(roipath): #function that reads the rois
     return (roi_high, roi_low)
 
 def apply_crop(roi, image): #function that crops the image into two, according to the rois
-    top_left_y = roi['top']
-    top_left_x = roi['left']
-    bottom_right_y = top_left_y + roi['height']
-    bottom_right_x = top_left_x + roi['width']
-    return image[top_left_y:bottom_right_y, top_left_x:bottom_right_x]
+    img_h, img_w = image.shape[:2]
+    top_left_y = int(roi['top'])
+    top_left_x = int(roi['left'])
+    roi_h = int(roi['height'])
+    roi_w = int(roi['width'])
+
+    bottom_right_y = top_left_y + roi_h
+    bottom_right_x = top_left_x + roi_w
+
+    clipped_y1 = max(0, top_left_y)
+    clipped_x1 = max(0, top_left_x)
+    clipped_y2 = min(img_h, bottom_right_y)
+    clipped_x2 = min(img_w, bottom_right_x)
+
+    if clipped_y1 >= clipped_y2 or clipped_x1 >= clipped_x2:
+        raise ValueError(
+            "ROI crop is outside image bounds after clipping "
+            f"(roi top={top_left_y}, left={top_left_x}, height={roi_h}, width={roi_w}; "
+            f"image shape={image.shape})"
+        )
+
+    if (clipped_y1, clipped_x1, clipped_y2, clipped_x2) != (top_left_y, top_left_x, bottom_right_y, bottom_right_x):
+        print(
+            "Warning: ROI exceeds image bounds; clipping crop to valid area "
+            f"(roi top={top_left_y}, left={top_left_x}, height={roi_h}, width={roi_w}; "
+            f"image shape={image.shape})"
+        )
+
+    return image[clipped_y1:clipped_y2, clipped_x1:clipped_x2]
 
 def crop_divided(divided):
     #define crop area
@@ -78,7 +123,7 @@ def match_common_shape(img_a, img_b):
     return img_a[:h, :w], img_b[:h, :w]
 
 
-def image_stacking(cropped_high, cropped_low, image_name=None):
+def image_stacking(cropped_high, cropped_low, image_name=None, crop_divided_center=True):
     if cropped_high.shape != cropped_low.shape:
         print(
             f"Warning: ROI crop shape mismatch"
@@ -107,13 +152,14 @@ def image_stacking(cropped_high, cropped_low, image_name=None):
     aligned_high[aligned_high==0]= np.median (aligned_high)
     divided =   aligned_high*1500 / cropped_low
     divided = divided.astype(np.uint16)
-    divided = crop_divided(divided)
+    if crop_divided_center:
+        divided = crop_divided(divided)
     divided2 =  cropped_high*1500 /cropped_low 
     divided2 = divided2.astype(np.uint16)
     return combined, divided, divided2, aligned_high
     
 
-def process_tif(image_name, image, outputpath, roi_high, roi_low):
+def process_tif(image_name, image, outputpath, roi_high, roi_low, crop_divided_center=True):
     image_folder = image_name.replace(".tif","")
     if not os.path.exists(outputpath + "/" + image_folder):
         os.makedirs(outputpath + "/" + image_name.replace(".tif",""))
@@ -126,7 +172,12 @@ def process_tif(image_name, image, outputpath, roi_high, roi_low):
     divname2 = outputpath + "/" + image_folder + '/' + image_folder + "_divided_non_aligned.tif"
     tifffile.imwrite(lowname, image_low, imagej=True)
     tifffile.imwrite(highname, image_high, imagej=True)
-    stacked_image, divided, divided2, aligned_high = image_stacking(image_high, image_low, image_name=image_name)
+    stacked_image, divided, divided2, aligned_high = image_stacking(
+        image_high,
+        image_low,
+        image_name=image_name,
+        crop_divided_center=crop_divided_center,
+    )
     tifffile.imwrite(stackname, stacked_image, imagej=True)
     tifffile.imwrite(divname, divided, imagej=True)
     tifffile.imwrite(divname2, divided2, imagej=True)
@@ -143,6 +194,27 @@ def calculate_mean_value_and_areas(divided_image, high_image, low_image, image_n
     
     norm_img = cv2.normalize(divided_image, None, 0, 255, cv2.NORM_MINMAX)
     divided_normalized = norm_img.astype('uint8')
+
+    # Segmentation is performed on divided_image, which is center-cropped.
+    # Measure high/low intensities in the same spatial window.
+    if high_image.shape[:2] != divided_normalized.shape[:2]:
+        h_full, w_full = high_image.shape[:2]
+        h_div, w_div = divided_normalized.shape[:2]
+        y1 = max(0, (h_full - h_div) // 2)
+        x1 = max(0, (w_full - w_div) // 2)
+        y2 = min(h_full, y1 + h_div)
+        x2 = min(w_full, x1 + w_div)
+        analysis_high = high_image[y1:y2, x1:x2]
+        analysis_low = low_image[y1:y2, x1:x2]
+        if analysis_high.shape[:2] != divided_normalized.shape[:2]:
+            common_h = min(analysis_high.shape[0], divided_normalized.shape[0])
+            common_w = min(analysis_high.shape[1], divided_normalized.shape[1])
+            analysis_high = analysis_high[:common_h, :common_w]
+            analysis_low = analysis_low[:common_h, :common_w]
+            divided_normalized = divided_normalized[:common_h, :common_w]
+    else:
+        analysis_high = high_image
+        analysis_low = low_image
     #Adaptive thresholding
     thresh = cv2.adaptiveThreshold(divided_normalized,maxValue=255, adaptiveMethod=cv2.ADAPTIVE_THRESH_MEAN_C,
                                    thresholdType=cv2.THRESH_BINARY_INV,
@@ -176,8 +248,8 @@ def calculate_mean_value_and_areas(divided_image, high_image, low_image, image_n
     
     # Background calculation: Create masks for high_image and low_image separately
     # All contours combined mask at full resolution
-    all_contours_mask_high = np.zeros_like(high_image, dtype='uint8')
-    all_contours_mask_low = np.zeros_like(low_image, dtype='uint8')
+    all_contours_mask_high = np.zeros_like(analysis_high, dtype='uint8')
+    all_contours_mask_low = np.zeros_like(analysis_low, dtype='uint8')
     for contour in contours:
         cv2.drawContours(all_contours_mask_high, [contour], -1, 255, thickness=cv2.FILLED)
         cv2.drawContours(all_contours_mask_low, [contour], -1, 255, thickness=cv2.FILLED)
@@ -187,8 +259,8 @@ def calculate_mean_value_and_areas(divided_image, high_image, low_image, image_n
     background_mask_low = all_contours_mask_low == 0
     background_mask_divided = expanded == 0
     
-    background_high = np.mean(high_image[background_mask_high]) if np.any(background_mask_high) else 0
-    background_low = np.mean(low_image[background_mask_low]) if np.any(background_mask_low) else 0
+    background_high = np.mean(analysis_high[background_mask_high]) if np.any(background_mask_high) else 0
+    background_low = np.mean(analysis_low[background_mask_low]) if np.any(background_mask_low) else 0
     background_divided = np.mean(divided_normalized[background_mask_divided]) if np.any(background_mask_divided) else 0
     contours = [cnt for cnt in contours if len(cnt) > contour_threshold]
 
@@ -205,15 +277,15 @@ def calculate_mean_value_and_areas(divided_image, high_image, low_image, image_n
         areas_low.append(area)
         
         # Create masks for the current contour
-        mask_high = np.zeros_like(high_image, dtype='uint8')
-        mask_low = np.zeros_like(low_image, dtype='uint8')
+        mask_high = np.zeros_like(analysis_high, dtype='uint8')
+        mask_low = np.zeros_like(analysis_low, dtype='uint8')
         mask_divided = np.zeros_like(divided_normalized)
         cv2.drawContours(mask_high, [contour], -1, 255, thickness=cv2.FILLED)
         cv2.drawContours(mask_low, [contour], -1, 255, thickness=cv2.FILLED)
         cv2.drawContours(mask_divided, [contour], -1, 255, thickness=cv2.FILLED)
         
         # Extract pixels within the contour for high image (from original, not normalized)
-        pixels_high = high_image[mask_high == 255]
+        pixels_high = analysis_high[mask_high == 255]
         if pixels_high.size == 0:
             continue
         # pixels_high = np.clip(pixels_high - background_high, 0, None)
@@ -223,7 +295,7 @@ def calculate_mean_value_and_areas(divided_image, high_image, low_image, image_n
         mean_value_high = np.mean(pixels_high)
         
         # Extract pixels within the contour for low image (from original, not normalized)
-        pixels_low = low_image[mask_low == 255]
+        pixels_low = analysis_low[mask_low == 255]
         if pixels_low.size == 0:
             continue
         # pixels_low = np.clip(pixels_low - background_low, 0, None)
@@ -240,10 +312,10 @@ def calculate_mean_value_and_areas(divided_image, high_image, low_image, image_n
             center_mask = dist_map >= (0.5 * max_dist)
             edge_mask = dist_map <= (0.2 * max_dist)
 
-            center_high = high_image[center_mask]
-            edge_high = high_image[edge_mask]
-            center_low = low_image[center_mask]
-            edge_low = low_image[edge_mask]
+            center_high = analysis_high[center_mask]
+            edge_high = analysis_high[edge_mask]
+            center_low = analysis_low[center_mask]
+            edge_low = analysis_low[edge_mask]
 
             if center_high.size > 0 and edge_high.size > 0 and np.mean(edge_high) != 0:
                 center_edge_ratio_high = np.mean(center_high) / np.mean(edge_high)
@@ -348,6 +420,13 @@ def main():
     with open ("settings.yaml") as settingfile:
         settings = yaml.safe_load(settingfile)
         particle_size_threshold = settings['particle_size_threshold']
+        crop_divided_center = parse_bool(settings.get("crop_divided_center", True), default=True)
+
+    env_crop_divided = os.environ.get("IMAGEANALYSIS_CROP_DIVIDED")
+    if env_crop_divided is not None:
+        crop_divided_center = parse_bool(env_crop_divided, default=crop_divided_center)
+
+    print(f"Center crop on divided image enabled: {crop_divided_center}")
     if len(sys.argv)!=4:
         print(f'Number of arguments expected: 4. Number of arguments provided {len(sys.argv)}')
         images_path = input('Images path: ')
@@ -363,18 +442,28 @@ def main():
     mean_values_from_divided = []
     areas = []
     for image_name, image in images.items():
-        aligned_high, cropped_low, divided = process_tif(image_name, image, output_path, roi_high, roi_low)
-        mean_merged, areas_high, areas_low, mean_divided = calculate_mean_value_and_areas(
-            divided,
-            aligned_high,
-            cropped_low,
-            image_name,
-            output_path,
-            particle_size_threshold,
-        )
-        particle_data.append(mean_merged)
-        mean_values_from_divided.extend(mean_divided)
-        areas.extend(areas_high)
+        try:
+            aligned_high, cropped_low, divided = process_tif(
+                image_name,
+                image,
+                output_path,
+                roi_high,
+                roi_low,
+                crop_divided_center=crop_divided_center,
+            )
+            mean_merged, areas_high, areas_low, mean_divided = calculate_mean_value_and_areas(
+                divided,
+                aligned_high,
+                cropped_low,
+                image_name,
+                output_path,
+                particle_size_threshold,
+            )
+            particle_data.append(mean_merged)
+            mean_values_from_divided.extend(mean_divided)
+            areas.extend(areas_high)
+        except (ValueError, RuntimeError, cv2.error) as e:
+            print(f"Skipping image {image_name}: {e}")
     avg_area = float(np.mean(areas)) if areas else float('nan')
     print(f'Areas calculated: {len(areas)}, {avg_area}')
     

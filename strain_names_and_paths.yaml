@@ -1,0 +1,133 @@
+###New dataset, all in the same conditions
+
+Paths: 
+  RML:
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/rml/265185-263269-day2/out_ml_full/particle_data.csv"
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/rml/I23895-day1/out_ml_full/particle_data.csv"
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/rml/I23895-day1/out_ml_full/particle_data.csv"
+  ME7:
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/me7/me7_I21487_day1/out_ml_full/particle_data.csv"
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/me7/me7_908492_day2/out_ml_full/particle_data.csv"
+  22L:
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/22L/904106_904106-day2/out_ml_full/particle_data.csv"
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/22L/I23185-day1/out_ml_full/particle_data.csv"
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/22L/I23897-day1/out_ml_full/particle_data.csv"
+
+
+ValidationPaths:
+  RML:
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/rml/i21488_day2/out_ml_full/particle_data.csv"
+  ME7:
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/me7/me7_i23896_day2/out_ml_full/particle_data.csv"
+  22L:
+  - "/Volumes/Untitled/Preps_Repeat_Machine_Learning/22L/I23892-day2/out_ml_full/particle_data.csv"
+
+
+
+
+
+
+
+
+
+# Paths: 
+#   RML: 
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/265246_265247/2uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/265246_265247/3uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/265246_265247/4uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/265246_265247/5uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_animals_265267_265198_265137_265222_265139_265173/RML_IC_SAMPLE4_L/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_animals_265267_265198_265137_265222_265139_265173/RML_IC_SAMPLE4_R/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_animals_265267_265198_265137_265222_265139_265173/rml_slide7_ic/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_animals_265267_265198_265137_265222_265139_265173_sourav/rml_rsv_1_sample1/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I21488/RML_I21488_3UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I21488/RML_I21488_4UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I21488/RML_121488_5UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I21488/RML_I21488_6UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I23895/RML_I23895_3UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I23895/RML_I23895_4UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I23895/RML_I23895_5UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/RML/RML_I23895/RML_I23895_6UL/out_ml_nob/particle_data.csv'
+
+#   ME7: 
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/batch4_me7/me7_batch4_10/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/batch4_me7/me7_batch4_top/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/batch4_me7/me7_batch4_9b/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/I23806_me7/ME7_I23806_3uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/I23806_me7/ME7_I23806_4uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/I23806_me7/ME7_I23806_5uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/I23806_me7/ME7_I23806_6uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/institute_stock_prep2_me7/me7_institute_stock_9a/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/institute_stock_prep2_me7/me7_institute_stock_9b/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/institute_stock_prep2_me7/me7_institute_stock_10/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/mix_batch4_institute_stock_prep2_me7/me7_mix_10/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/mix_batch4_institute_stock_prep2_me7/me7_mix_11_l/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/mix_batch4_institute_stock_prep2_me7/me7_mix_11_r/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/institute_stock_prep1_me7/Sample5_ME7_IC/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/institute_stock_prep1_me7/me7_ic_3_sample4/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/ME7/institute_stock_prep1_me7/me7_ic_2sample3/out_ml_nob/particle_data.csv'
+
+#   22L: 
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_animals_902704_902767_902758_902470_ic/22ic_slide7/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_animals_902704_902767_902758_902470_ic/22L_IC_2_sample2/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_animals_902704_902767_902758_902470_ic/22L_IC_3_sample3/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_animals_902704_902767_902758_902470_ic/22L_IC_SAMPLE4/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_animals_902704_902767_902758_902470_ic/22l_slide5_ic/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_Ben_Hutt/22Lbh_slide7/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_I23185/22L_I23185_3UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_I23185/22L_I23185_4UL/out_ml_nob/particle_data.csv'  
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_I23185/22L_I23185_3UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22L_I23185/22L_I23185_4UL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/22l_mixed_902704_902767_902758_902470_Ben_Hutt_IC/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23897_22l/I23897_2uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23897_22l/I23897_3uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23897_22l/I23897_4uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23897_22l/I23897_5uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23892_22l/I23892_2uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23892_22l/I23892_3uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23892_22l/I23892_4uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/strain_characterization_data/training_dataset/22L/I23892_22l/I23892_5uL/out_ml_nob/particle_data.csv'
+
+# ValidationPaths:
+#   RML: 
+#   - '/Volumes/Untitled/Validation Dataset/RML/265185_265269/2uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/RML/265185_265269/3uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/RML/265185_265269/4uL/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/RML/265185_265269/5uL/out_ml_nob/particle_data.csv'
+
+
+#   ME7: 
+#   - '/Volumes/Untitled/Validation Dataset/ME7/me7_mouse908492/ME7_12_D/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/ME7/me7_mouse908492/ME7_12_U/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/ME7/me7_mouse908492/ME7_13_L/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/ME7/me7_mouse908492/ME7_13_h/out_ml_nob/particle_data.csv'
+
+
+#   22L: 
+#   - '/Volumes/Untitled/Validation Dataset/22L/22L_animals_904105_904106/22L_12_U/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/22L/22L_animals_904105_904106/22L_12_D/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/22L/22L_animals_904105_904106/22L_13_h/out_ml_nob/particle_data.csv'
+#   - '/Volumes/Untitled/Validation Dataset/22L/22L_animals_904105_904106/22L_13_L/out_ml_nob/particle_data.csv'
+  
+
+
+###Old paths
+
+# Paths: 
+#   RML: 
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/251017/RML/out_ml/particle_data.csv"
+#   # - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/251202/RML_5X/out_ml/particle_data.csv"
+#   # - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/251202/RML_2.5X/out_ml/particle_data.csv"
+#   # - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/251202/RML_1.25X/out_ml/particle_data.csv"
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/260206/rml_2601/out_ml/particle_data.csv"
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/260206/RML_250115/out_ml/particle_data.csv"
+
+
+#   ME7: 
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/260206/ME7_2601/out_ml/particle_data.csv"
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/260206/ME7_250115/out_ml/particle_data.csv"
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/251017/ME7/out_ml/particle_data.csv"
+
+#   22L: 
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/260206/22L_250115/out_ml/particle_data.csv"
+#   - "/Users/ioannachatzitheodosiou/Desktop/scripts/Optosplit_Analysis/strain_analysis_quad/260206/22L_B_250115/out_ml/particle_data.csv"

@@ -12,3 +12,5 @@
 !colours.yaml
 !settings.yaml
 !run_imageanalysis.sh
+!classification.py
+!strain_names_and_paths.yaml
