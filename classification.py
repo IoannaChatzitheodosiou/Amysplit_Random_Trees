@@ -9,6 +9,8 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 import yaml
 import argparse
+import json
+import joblib
 import time
 from pathlib import Path
 from datetime import datetime
@@ -134,6 +136,21 @@ def parse_args():
         '--include-shape-spatial',
         action='store_true',
         help='Also use particle shape and spacing features (excluded by default: they track sample prep, not strain)'
+    )
+    parser.add_argument(
+        '--output-dir',
+        default=None,
+        help='Folder for saved results (default: classification_results/<date-time>_<model>)'
+    )
+    parser.add_argument(
+        '--save-particle-predictions',
+        action='store_true',
+        help='Also save one row per test particle with predicted probabilities (large file)'
+    )
+    parser.add_argument(
+        '--save-model',
+        action='store_true',
+        help='Also save the trained model as model.joblib (a large RandomForest can take several GB)'
     )
     return parser.parse_args()
 
@@ -383,31 +400,82 @@ if args.plots:
         px.scatter_3d(normalized_dataset, x=x, y=y, z=z, color='strain').show()
 
 
-def report_aggregated(model, X, df, y_true, level_col, label):
-    """Average particle probabilities within each image/sample and report accuracy."""
-    proba = pd.DataFrame(model.predict_proba(X), columns=model.classes_, index=df.index)
-    keys = df[level_col] if isinstance(level_col, str) else df[level_col].astype(str).agg('|'.join, axis=1)
-    grouped = proba.groupby(keys)
-    pred = grouped.mean().idxmax(axis=1)
-    true = y_true.groupby(keys).first()
-    print(
-        f"{label}-level ({len(true)} {label.lower()}s): "
-        f"accuracy={accuracy_score(true, pred):.4f}, macro-F1={f1_score(true, pred, average='macro'):.4f}"
-    )
-    return pd.DataFrame({'true': true, 'predicted': pred})
+def report_aggregated(proba, df, y_true, level_cols, label):
+    """Average particle probabilities within each image/sample and report accuracy.
+
+    Returns one row per group: the grouping columns, true strain, predicted strain,
+    number of particles and the mean probability of each strain.
+    """
+    grouped = proba.groupby([df[c] for c in level_cols])
+    mean_proba = grouped.mean()
+    table = mean_proba.add_prefix('prob_')
+    table.insert(0, 'n_particles', grouped.size())
+    table.insert(0, 'predicted', mean_proba.idxmax(axis=1))
+    table.insert(0, 'true', y_true.groupby([df[c] for c in level_cols]).first())
+    acc = accuracy_score(table['true'], table['predicted'])
+    f1 = f1_score(table['true'], table['predicted'], average='macro')
+    print(f"{label}-level ({len(table)} {label.lower()}s): accuracy={acc:.4f}, macro-F1={f1:.4f}")
+    return table.reset_index(), {'n': int(len(table)), 'accuracy': acc, 'macro_f1': f1}
 
 
 def evaluate(model, name):
-    y_pred = model.predict(X_test)
-    print(f"{name} particle-level test accuracy: {accuracy_score(y_test, y_pred):.4f}")
-    print(f"{name} particle-level test macro-F1: {f1_score(y_test, y_pred, average='macro'):.4f}")
+    """Print test results for a model and save them to the output folder."""
+    prefix = name.lower().replace(' ', '_')
+    proba = pd.DataFrame(model.predict_proba(X_test), columns=model.classes_, index=test_df.index)
+    y_pred = proba.idxmax(axis=1)
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average='macro')
+    print(f"{name} particle-level test accuracy: {acc:.4f}")
+    print(f"{name} particle-level test macro-F1: {f1:.4f}")
     print(f"{name} classification report:\n", classification_report(y_test, y_pred))
-    print(f"{name} confusion matrix:\n", confusion_matrix(y_test, y_pred))
+    labels = list(model.classes_)
+    cm = confusion_matrix(y_test, y_pred, labels=labels)
+    print(f"{name} confusion matrix (rows = true, columns = predicted, order {labels}):\n", cm)
+
+    metrics = {'particle': {'n': int(len(y_test)), 'accuracy': acc, 'macro_f1': f1}}
+    pd.DataFrame(classification_report(y_test, y_pred, output_dict=True)).T.to_csv(
+        output_dir / f'{prefix}_classification_report.csv')
+    pd.DataFrame(cm, index=pd.Index(labels, name='true'), columns=pd.Index(labels, name='predicted')).to_csv(
+        output_dir / f'{prefix}_confusion_matrix.csv')
+
     if 'image' in test_df.columns and 'source_path' in test_df.columns:
-        report_aggregated(model, X_test, test_df, y_test, ['source_path', 'image'], 'Image')
+        images, metrics['image'] = report_aggregated(proba, test_df, y_test, ['source_path', 'image'], 'Image')
+        images.to_csv(output_dir / f'{prefix}_image_predictions.csv', index=False)
     if 'source_path' in test_df.columns:
-        sample_calls = report_aggregated(model, X_test, test_df, y_test, 'source_path', 'Sample')
-        print(sample_calls.to_string())
+        samples, metrics['sample'] = report_aggregated(proba, test_df, y_test, ['source_path'], 'Sample')
+        samples.to_csv(output_dir / f'{prefix}_sample_predictions.csv', index=False)
+        print(samples[['source_path', 'true', 'predicted']].to_string(index=False))
+
+    if args.save_particle_predictions:
+        keep = [c for c in ('source_path', 'image', 'particle_id') if c in test_df.columns]
+        particles = test_df[keep].copy()
+        particles['true'] = y_test
+        particles['predicted'] = y_pred
+        particles = particles.join(proba.add_prefix('prob_'))
+        particles.to_csv(output_dir / f'{prefix}_particle_predictions.csv', index=False)
+    return metrics
+
+
+def save_json(path, obj):
+    with open(path, 'w') as f:
+        json.dump(obj, f, indent=2, default=lambda v: v.item() if hasattr(v, 'item') else str(v))
+
+
+run_started = datetime.now()
+output_dir = Path(args.output_dir) if args.output_dir else (
+    Path('classification_results') / f"{run_started.strftime('%Y%m%d-%H%M%S')}_{args.model}"
+)
+output_dir.mkdir(parents=True, exist_ok=True)
+print(f"Saving results to: {output_dir}")
+save_json(output_dir / 'run_config.json', {
+    'started': run_started.isoformat(timespec='seconds'),
+    'arguments': vars(args),
+    'features': feature_cols,
+    'train_particles': int(len(train_df)),
+    'test_particles': int(len(test_df)),
+    'train_samples': sorted(train_df['source_path'].unique()) if 'source_path' in train_df.columns else None,
+    'test_samples': sorted(test_df['source_path'].unique()) if 'source_path' in test_df.columns else None,
+})
 
 
 model_name = 'HistGradientBoosting' if args.model == 'hgb' else 'Random Forest'
@@ -426,7 +494,13 @@ best_model = search.best_estimator_
 
 print(f"Best {model_name} CV macro-F1: {search.best_score_:.4f}")
 print(f"Best {model_name} params: {search.best_params_}")
-evaluate(best_model, model_name)
+pd.DataFrame(search.cv_results_).sort_values('rank_test_f1_macro').to_csv(output_dir / 'cv_results.csv', index=False)
+summary = {
+    'model': model_name,
+    'cv_macro_f1': search.best_score_,
+    'best_params': search.best_params_,
+    'test': {model_name: evaluate(best_model, model_name)},
+}
 
 if args.model == 'rf' and not args.no_extra_trees:
     print("\nTraining ExtraTrees baseline for comparison...")
@@ -441,12 +515,20 @@ if args.model == 'rf' and not args.no_extra_trees:
         n_jobs=-1,
     )
     et_model.fit(X_train, y_train)
-    evaluate(et_model, 'ExtraTrees')
+    summary['test']['ExtraTrees'] = evaluate(et_model, 'ExtraTrees')
 
 if hasattr(best_model, 'feature_importances_'):
     feature_importance = pd.Series(best_model.feature_importances_, index=feature_cols).sort_values(ascending=False)
     print(f"\nTop 15 {model_name} feature importances:")
     print(feature_importance.head(15))
+    feature_importance.rename_axis('feature').rename('importance').to_csv(output_dir / 'feature_importances.csv')
+
+if args.save_model:
+    joblib.dump({'model': best_model, 'features': feature_cols}, output_dir / 'model.joblib')
+
+summary['finished'] = datetime.now().isoformat(timespec='seconds')
+save_json(output_dir / 'summary.json', summary)
+print(f"\nResults saved to: {output_dir}")
 
 
 # # Filter out RML strain

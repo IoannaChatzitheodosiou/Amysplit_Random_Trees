@@ -46,6 +46,7 @@ done)
 
 log "Training classifier: classification.py $*"
 cd "$SCRIPT_DIR"
-"$PY" classification.py --yaml-path "$RESULTS_DIR/strain_names_and_paths.yaml" "$@" 2>&1 \
+"$PY" classification.py --yaml-path "$RESULTS_DIR/strain_names_and_paths.yaml" \
+    --output-dir "$RESULTS_DIR/classification" "$@" 2>&1 \
     | tee "$RESULTS_DIR/classification.log"
 log "Done. Results in $RESULTS_DIR"
